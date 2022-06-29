@@ -12,7 +12,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.util.Log;
 import android.view.MotionEvent;
-import android.view.WindowManager;
 import android.view.View;
 import android.view.Window;
 import android.webkit.CookieManager;
@@ -39,6 +38,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.lang.Math;
 import java.math.BigDecimal;
+import java.util.Objects;
 
 import javax.annotation.Nullable;
 
@@ -144,6 +144,9 @@ public class ReactVideoView extends ScalableVideoView implements
     private boolean isCompleted = false;
     private boolean mUseNativeControls = false;
 
+    private int mCurrentPosition = 0;
+    private boolean mRestoreCurrentPosition = false;
+
     public ReactVideoView(ThemedReactContext themedReactContext) {
         super(themedReactContext);
 
@@ -164,6 +167,9 @@ public class ReactVideoView extends ScalableVideoView implements
                     event.putDouble(EVENT_PROP_PLAYABLE_DURATION, mVideoBufferedDuration / 1000.0); //TODO:mBufferUpdateRunnable
                     event.putDouble(EVENT_PROP_SEEKABLE_DURATION, mVideoDuration / 1000.0);
                     mEventEmitter.receiveEvent(getId(), Events.EVENT_PROGRESS.toString(), event);
+
+                    // save current position of the player to restore it after moving the video player view
+                    mCurrentPosition = mMediaPlayer.getCurrentPosition();
 
                     // Check for update after an interval
                     mProgressUpdateHandler.postDelayed(mProgressUpdateRunnable, Math.round(mProgressUpdateInterval));
@@ -255,6 +261,11 @@ public class ReactVideoView extends ScalableVideoView implements
     }
 
     public void setSrc(final String uriString, final String type, final boolean isNetwork, final boolean isAsset, final ReadableMap requestHeaders, final int expansionMainVersion, final int expansionPatchVersion) {
+
+        // do not restore current position in case new video url is equal to previous one
+        if (!Objects.equals(mSrcUriString, uriString)) {
+            mRestoreCurrentPosition = false;
+        }
 
         mSrcUriString = uriString;
         mSrcType = type;
@@ -587,6 +598,12 @@ public class ReactVideoView extends ScalableVideoView implements
         }
 
         selectTimedMetadataTrack(mp);
+
+        // restore previous current position
+        if (mRestoreCurrentPosition) {
+            mRestoreCurrentPosition = false;
+            seekTo(mCurrentPosition);
+        }
     }
 
     @Override
@@ -709,6 +726,7 @@ public class ReactVideoView extends ScalableVideoView implements
 
     @Override
     protected void onDetachedFromWindow() {
+        mRestoreCurrentPosition = true;
         mMediaPlayerValid = false;
         super.onDetachedFromWindow();
         setKeepScreenOn(false);
